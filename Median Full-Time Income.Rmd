@@ -1,0 +1,113 @@
+---
+title: "Median Full-Time Income"
+author: "Kaitlan Wong"
+date: "2023-04-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require("knitr")
+library(ipumsr,quietly = T)
+library(dplyr,quietly = T)
+library(car,quietly = T)
+library(zoo,quietly = T)
+library(ggplot2,quietly = T)
+library(questionr,quietly = T)
+library(survey,quietly = T)
+library(png)
+library(tableone)
+library(stringr)
+library(psych)
+library(gtsummary)
+library(tidyverse)
+library(naniar)
+
+
+```
+
+```{r}
+#Read in ACS data from IPUMS
+
+usa_ddi <- read_ipums_ddi("usa_00026.xml")
+acs_data <- read_ipums_micro("usa_00026.xml", data_file = ("usa_00026.csv.gz"), verbose = FALSE)
+
+#Convert variable names to lower case
+names(acs_data) <- tolower(names(acs_data))
+
+# #View(acs_data)
+# is.data.frame(acs_data)
+# describe(acs_data)
+
+```
+
+
+```{r}
+
+#Determine how many NAs there are 
+sum(is.na(acs_data))
+#Percent missing values per variable
+apply(acs_data, 2, function(col)sum(is.na(col))/length(col))
+
+#Remove missing cases 
+na.omit(acs_data)
+
+```
+
+
+```{r}
+###Recodes###
+
+#Filter for people who usually work 30+ hours a week
+fulltime_workers <- acs_data %>% 
+  filter(uhrswork %in% c(30:99)) %>% 
+#Condense Race and Ethnicity categories to create a new race/ethnicity variable
+  mutate(race_eth=case_when(hispan %in% c(1:4) & race %in% c(1:9) ~ "Hispanic",
+                             hispan == 0 & race == 1 ~ "White, non-Hispanic", 
+                             hispan == 0 & race == 2 ~ "Black, non-Hispanic",
+                             hispan == 0 & race == 3 ~ "AIAN, non-Hispanic",
+                             hispan == 0 & race %in% c(4:6) ~ "Asian or Pacific Islander, non-Hispanic",
+                             hispan == 0 & race == 7 ~ "Other, non-Hispanic",
+                             hispan == 0 & race %in% c(8,9) ~ "Multiracial, non-Hispanic",
+                             TRUE ~ NA_character_))
+
+# Get median income by race/ethnicity and year
+median_income_data <- fulltime_workers %>%
+  aggregate(incwage ~ year + race_eth, data = ., FUN = median) %>%
+  rename(median_income = incwage) %>%
+  arrange(year, race_eth)
+
+# View the data with the two new variables (race/ethnicity and poverty level)
+view(median_income_data)
+```
+
+
+```{r}
+#Create a line chart showing median income by race and ethnicity over time
+
+ggplot(median_income_data) +
+  aes(x = year, y = median_income, color = race_eth) +
+  geom_line()
+
+```
+
+```{r}
+#Create bar charts for each year showing median income by race and ethnicity
+
+ggplot(median_income_data) + 
+  aes(x = year, y = median_income, fill = race_eth) +
+  geom_col(position = "dodge") +
+  labs(x = "Year", y = "Median Income")
+
+```
+
+
+```{r}
+#Create excel file with new variables 
+
+library(writexl)
+write_xlsx(median_income_data,"C:\\Users\\kaitl\\Documents\\Every Texan\\R\\TX Median Full Time Income ACS\\Median_Full-Time_Income.xlsx")
+
+```
+
+
